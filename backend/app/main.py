@@ -2,8 +2,8 @@ import os
 import logging
 from pathlib import Path
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse, RedirectResponse, FileResponse, HTMLResponse
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
@@ -42,26 +42,17 @@ app = FastAPI(
     openapi_url="/openapi.json"
 )
 
-# 1. Comprehensive CORS Configuration
-ALLOWED_ORIGINS = [
-    "*",
-    "https://ali-production-6799.up.railway.app",
-    "http://localhost:3000",
-    "http://localhost:5173",
-    "http://127.0.0.1:3000",
-    "http://127.0.0.1:5173",
-]
-
+# 1. Comprehensive CORS Configuration for Frontend Dashboard
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["*"],
 )
 
-# 2. Include API Routers
+# 2. Include API Routers FIRST
 app.include_router(auth_router, prefix="/api/admin", tags=["Admin Auth"])
 app.include_router(users_router, prefix="/api/user", tags=["User Operations"])
 app.include_router(sub_router, prefix="/sub", tags=["Subscription Engine"])
@@ -76,42 +67,33 @@ async def health():
         "backend_url": "https://ali-production-6799.up.railway.app"
     }
 
-# 3. Mount Static Frontend (Option A)
-STATIC_DIR = Path("/app/static")
-if not STATIC_DIR.exists():
-    # Local fallback
-    STATIC_DIR = Path("static")
+# 3. Mount Static Frontend Assets & Catch-all SPA Route
+STATIC_DIR = "static" if os.path.isdir("static") else "/app/static"
 
-if STATIC_DIR.exists() and (STATIC_DIR / "index.html").exists():
-    # Mount assets folder if exists
-    assets_dir = STATIC_DIR / "assets"
-    if assets_dir.exists():
-        app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="static_assets")
+if os.path.exists(STATIC_DIR):
+    assets_path = os.path.join(STATIC_DIR, "assets")
+    if os.path.exists(assets_path):
+        app.mount("/assets", StaticFiles(directory=assets_path), name="assets")
 
-    @app.get("/dashboard", summary="Web Dashboard SPA")
-    @app.get("/dashboard/{full_path:path}", summary="Web Dashboard Subpaths")
-    async def serve_dashboard(full_path: str = ""):
-        return FileResponse(str(STATIC_DIR / "index.html"))
+    @app.get("/{full_path:path}", summary="Catch-all SPA Frontend Routing")
+    async def catch_all(full_path: str):
+        # Ignore API routes, docs, and sub links so they are processed by FastAPI
+        if (
+            full_path.startswith("api")
+            or full_path.startswith("sub")
+            or full_path.startswith("docs")
+            or full_path.startswith("redoc")
+            or full_path.startswith("openapi.json")
+            or full_path == "health"
+        ):
+            raise HTTPException(status_code=404, detail="Not Found")
 
-# 4. Root Endpoint
-@app.get("/", summary="Root Endpoint")
-async def root(request: Request):
-    # Check if compiled frontend index.html exists
-    index_file = STATIC_DIR / "index.html"
-    if index_file.exists():
-        return FileResponse(str(index_file))
-    
-    # If accessed via a browser expecting HTML, redirect gracefully to /docs
-    accept = request.headers.get("accept", "")
-    if "text/html" in accept and not request.query_params.get("raw"):
-        return RedirectResponse(url="/docs")
-    
-    return {
-        "status": "ok",
-        "message": "Marzban Xray VPN Manager API is running",
-        "backend_url": "https://ali-production-6799.up.railway.app",
-        "docs_url": "/docs",
-        "openapi_url": "/openapi.json",
-        "health_check": "/health",
-        "dashboard_url": "/dashboard"
-    }
+        file_path = os.path.join(STATIC_DIR, full_path)
+        if os.path.exists(file_path) and os.path.isfile(file_path):
+            return FileResponse(file_path)
+            
+        index_file = os.path.join(STATIC_DIR, "index.html")
+        if os.path.exists(index_file):
+            return FileResponse(index_file)
+            
+        raise HTTPException(status_code=404, detail="Frontend static files not found")
