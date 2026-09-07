@@ -1,0 +1,79 @@
+version: "3.8"
+
+services:
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: xray_nginx
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./certs:/etc/nginx/certs:ro
+    depends_on:
+      - backend
+      - frontend
+    networks:
+      - xray_network
+
+  backend:
+    build: { context: ./backend, dockerfile: Dockerfile }
+    container_name: xray_backend
+    restart: always
+    env_file: [.env]
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://xray:xray_secure_pass@postgres:5432/xray_db
+      - XRAY_GRPC_HOST=xray-core
+      - XRAY_GRPC_PORT=10085
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      postgres: { condition: service_healthy }
+      xray-core: { condition: service_started }
+    networks:
+      - xray_network
+
+  frontend:
+    build: { context: ., dockerfile: frontend/Dockerfile }
+    container_name: xray_frontend
+    restart: always
+    networks:
+      - xray_network
+
+  xray-core:
+    image: teddysun/xray:latest
+    container_name: xray_core
+    restart: always
+    ports:
+      - "8443:8443"
+      - "2080:2080"
+    volumes:
+      - ./xray/config.json:/etc/xray/config.json:ro
+    command: ["xray", "run", "-c", "/etc/xray/config.json"]
+    networks:
+      - xray_network
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: xray_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: xray
+      POSTGRES_PASSWORD: xray_secure_pass
+      POSTGRES_DB: xray_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U xray -d xray_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - xray_network
+
+volumes:
+  postgres_data:
+networks:
+  xray_network:
+    driver: bridge
