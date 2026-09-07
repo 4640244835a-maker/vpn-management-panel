@@ -1,71 +1,64 @@
 version: "3.8"
 
 services:
-  nginx:
-    image: nginx:1.25-alpine
-    container_name: xray_nginx
-    restart: always
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./certs:/etc/nginx/certs:ro
-    depends_on:
-      - backend
-      - frontend
-    networks:
-      - xray_network
-
   backend:
-    build: { context: ./backend, dockerfile: Dockerfile }
-    container_name: xray_backend
-    restart: always
-    env_file: [.env]
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: xray_fastapi_backend
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8000}:${PORT:-8000}"
+    env_file:
+      - .env
     environment:
-      - DATABASE_URL=postgresql+asyncpg://xray:xray_secure_pass@postgres:5432/xray_db
+      - PORT=${PORT:-8000}
+      - PROJECT_NAME=${PROJECT_NAME:-Marzban Xray Manager}
+      - SECRET_KEY=${SECRET_KEY:-default_super_secret_key_change_in_production_min32chars}
+      - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES:-10080}
+      - DATABASE_URL=${DATABASE_URL:-postgresql+asyncpg://postgres:postgres@db:5432/xray_db}
       - XRAY_GRPC_HOST=xray-core
       - XRAY_GRPC_PORT=10085
+      - SUB_BASE_URL=${SUB_BASE_URL:-https://your-domain.up.railway.app}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - TELEGRAM_ADMIN_CHAT_ID=${TELEGRAM_ADMIN_CHAT_ID:-}
+      - TRAFFIC_UPDATE_INTERVAL=${TRAFFIC_UPDATE_INTERVAL:-30}
     volumes:
       - ./data:/app/data
     depends_on:
-      postgres: { condition: service_healthy }
-      xray-core: { condition: service_started }
-    networks:
-      - xray_network
-
-  frontend:
-    build: { context: ., dockerfile: frontend/Dockerfile }
-    container_name: xray_frontend
-    restart: always
+      db:
+        condition: service_healthy
+      xray-core:
+        condition: service_started
     networks:
       - xray_network
 
   xray-core:
     image: teddysun/xray:latest
     container_name: xray_core
-    restart: always
+    restart: unless-stopped
     ports:
       - "8443:8443"
       - "2080:2080"
     volumes:
       - ./xray/config.json:/etc/xray/config.json:ro
+      - xray_logs:/var/log/xray
     command: ["xray", "run", "-c", "/etc/xray/config.json"]
     networks:
       - xray_network
 
-  postgres:
+  db:
     image: postgres:15-alpine
-    container_name: xray_postgres
-    restart: always
+    container_name: xray_postgres_db
+    restart: unless-stopped
     environment:
-      POSTGRES_USER: xray
-      POSTGRES_PASSWORD: xray_secure_pass
-      POSTGRES_DB: xray_db
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-xray_db}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U xray -d xray_db"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-xray_db}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -74,6 +67,10 @@ services:
 
 volumes:
   postgres_data:
+    driver: local
+  xray_logs:
+    driver: local
+
 networks:
   xray_network:
     driver: bridge
