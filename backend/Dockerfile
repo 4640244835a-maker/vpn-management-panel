@@ -1,16 +1,38 @@
-FROM python:3.11-slim AS builder
-WORKDIR /build
-RUN apt-get update && apt-get install -y --no-install-recommends build-essential libpq-dev
-COPY requirements.txt .
-RUN pip install --upgrade pip && pip install --prefix=/install -r requirements.txt
+# Production Dockerfile for Railway backend
+FROM python:3.11-slim
 
-FROM python:3.11-slim AS runner
 WORKDIR /app
-ENV PATH="/install/bin:$PATH" PYTHONPATH="/app:/install/lib/python3.11/site-packages"
-RUN apt-get update && apt-get install -y --no-install-recommends libpq5 curl
-COPY --from=builder /install /install
-RUN useradd -u 10001 -m appuser
-COPY --chown=appuser:appuser . /app
-USER appuser
-EXPOSE 8000
-CMD ["uvicorn", "backend.app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PORT=8000
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    libpq-dev \
+    libpq5 \
+    curl \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Verify uvicorn
+RUN which uvicorn && uvicorn --version
+
+COPY . /app
+
+# Ensure symlink for module imports
+RUN if [ -d "/app/app" ] && [ ! -d "/app/backend" ]; then \
+        mkdir -p /app/backend && ln -s /app/app /app/backend/app; \
+    fi
+
+ENV PYTHONPATH="/app:/app/backend:${PYTHONPATH}"
+
+EXPOSE ${PORT}
+
+CMD ["/bin/sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
