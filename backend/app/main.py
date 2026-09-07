@@ -2,15 +2,14 @@ import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-
-from backend.app.core.config import settings
-from backend.app.db.session import engine, Base, AsyncSessionLocal
-from backend.app.services.scheduler import start_scheduler, stop_scheduler
-from backend.app.services.traffic_monitor import traffic_monitor
-from backend.app.services.telegram_bot import telegram_bot
-from backend.app.api.auth import router as auth_router
-from backend.app.api.users import router as users_router
-from backend.app.api.subscription import router as sub_router
+from app.core.config import settings
+from app.db.session import engine, Base
+from app.services.scheduler import start_scheduler, stop_scheduler
+from app.services.traffic_monitor import traffic_monitor
+from app.services.telegram_bot import telegram_bot
+from app.api.auth import router as auth_router
+from app.api.users import router as users_router
+from app.api.subscription import router as sub_router
 
 logger = logging.getLogger("xray.main")
 
@@ -18,7 +17,6 @@ logger = logging.getLogger("xray.main")
 async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-
     # Start background scheduler, traffic monitor and telegram bot
     start_scheduler()
     traffic_monitor.start()
@@ -31,7 +29,7 @@ async def lifespan(app: FastAPI):
     stop_scheduler()
 
 app = FastAPI(
-    title="Marzban Xray VPN Manager API",
+    title=settings.PROJECT_NAME,
     version="1.0.0",
     lifespan=lifespan
 )
