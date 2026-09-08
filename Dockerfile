@@ -1,10 +1,10 @@
 # Stage 1: Build Frontend Assets
 FROM node:20-alpine AS frontend-builder
 WORKDIR /build
-COPY package.json tsconfig*.json vite.config.ts index.html ./
-COPY src/ ./src/
-COPY public/ ./public/
-RUN npm install --silent && npm run build
+COPY package.json ./
+RUN npm install --silent
+COPY . ./
+RUN mkdir -p public && npm run build
 
 # Stage 2: Final Production Python Image
 FROM python:3.11-slim
