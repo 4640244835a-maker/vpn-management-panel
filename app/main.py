@@ -90,16 +90,39 @@ app.include_router(sub_router)
 async def health_check():
     return {"status": "online", "version": settings.VERSION}
 
-DIST_DIR = Path("dist")
+BUILD_DIRS = ["static", "dist", "frontend/dist"]
+STATIC_DIR = next((d for d in BUILD_DIRS if os.path.isdir(d) and os.path.exists(os.path.join(d, "index.html"))), None)
+if not STATIC_DIR:
+    STATIC_DIR = next((d for d in BUILD_DIRS if os.path.isdir(d)), "static")
+
+for candidate in [os.path.join(STATIC_DIR, "assets"), "static/assets", "dist/assets", "frontend/dist/assets"]:
+    if os.path.isdir(candidate):
+        app.mount("/assets", StaticFiles(directory=candidate), name="assets")
+        break
+
+@app.get("/")
+async def serve_root():
+    for b_dir in [STATIC_DIR, "static", "dist", "frontend/dist"]:
+        if b_dir and os.path.isdir(b_dir):
+            index_candidate = os.path.join(b_dir, "index.html")
+            if os.path.isfile(index_candidate):
+                return FileResponse(index_candidate)
+    if os.path.isfile("index.html"):
+        return FileResponse("index.html")
+    return JSONResponse({"status": "FastAPI Backend Running", "docs": "/docs"})
 
 @app.get("/{full_path:path}")
-async def serve_frontend_or_fallback(full_path: str):
-    if full_path.startswith(("api", "sub", "docs", "redoc", "openapi.json")):
+async def serve_react_app(full_path: str):
+    if full_path.startswith(("api", "docs", "redoc", "openapi.json", "sub")):
         return JSONResponse(status_code=404, content={"detail": f"Route /{full_path} not found"})
-    target_dist_file = DIST_DIR / full_path
-    if full_path and target_dist_file.is_file():
-        return FileResponse(target_dist_file)
-    index_dist = DIST_DIR / "index.html"
-    if index_dist.is_file():
-        return FileResponse(index_dist)
-    return JSONResponse({"status": "API is running. Build frontend with 'npm run build'"})
+    for b_dir in [STATIC_DIR, "static", "dist", "frontend/dist"]:
+        if b_dir and os.path.isdir(b_dir):
+            target_file = os.path.join(b_dir, full_path)
+            if full_path and os.path.isfile(target_file):
+                return FileResponse(target_file)
+            index_candidate = os.path.join(b_dir, "index.html")
+            if os.path.isfile(index_candidate):
+                return FileResponse(index_candidate)
+    if os.path.isfile("index.html"):
+        return FileResponse("index.html")
+    return JSONResponse({"status": "FastAPI Backend Running", "docs": "/docs"})
