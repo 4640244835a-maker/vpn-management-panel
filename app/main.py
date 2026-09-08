@@ -90,30 +90,26 @@ app.include_router(sub_router)
 async def health_check():
     return {"status": "online", "version": settings.VERSION}
 
-STATIC_DIR = os.path.join(os.path.dirname(__file__), "..", "static")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+STATIC_DIR = os.path.join(BASE_DIR, "static")
 if not os.path.exists(STATIC_DIR):
-    STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
+    STATIC_DIR = os.path.join(os.path.dirname(BASE_DIR), "static")
 if not os.path.exists(STATIC_DIR):
-    dist_candidate = os.path.join(os.path.dirname(__file__), "..", "dist")
-    if os.path.exists(dist_candidate):
-        STATIC_DIR = dist_candidate
+    dist_dir = os.path.join(os.path.dirname(BASE_DIR), "dist")
+    if os.path.exists(dist_dir):
+        STATIC_DIR = dist_dir
 
-if os.path.exists(STATIC_DIR):
-    assets_dir = os.path.join(STATIC_DIR, "assets")
-    if os.path.exists(assets_dir):
-        app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
+if os.path.exists(os.path.join(STATIC_DIR, "assets")):
+    app.mount("/assets", StaticFiles(directory=os.path.join(STATIC_DIR, "assets")), name="assets")
 
 @app.get("/{full_path:path}")
-async def serve_frontend(full_path: str):
+async def serve_app(full_path: str):
     if full_path.startswith(("api", "docs", "redoc", "openapi.json", "sub")):
         return None
     file_path = os.path.join(STATIC_DIR, full_path)
-    if os.path.exists(file_path) and os.path.isfile(file_path):
+    if full_path and os.path.exists(file_path) and os.path.isfile(file_path):
         return FileResponse(file_path)
     index_path = os.path.join(STATIC_DIR, "index.html")
     if os.path.exists(index_path) and os.path.isfile(index_path):
         return FileResponse(index_path)
-    alt_index = os.path.join(os.path.dirname(__file__), "..", "dist", "index.html")
-    if os.path.exists(alt_index) and os.path.isfile(alt_index):
-        return FileResponse(alt_index)
-    return FileResponse(index_path)
+    return HTMLResponse(content=FALLBACK_DASHBOARD_HTML, status_code=200)
