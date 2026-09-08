@@ -4,27 +4,27 @@ WORKDIR /build
 
 COPY . .
 
-RUN mkdir -p /build/dist /build/static && \
-    if [ -f "package.json" ]; then \
-        echo "==> Detected package.json at root. Building frontend..." && \
-        mkdir -p public && \
-        npm install --silent && \
-        npm run build --if-present && \
-        if [ -d "dist" ]; then cp -r dist/* /build/dist/ 2>/dev/null || true; cp -r dist/* /build/static/ 2>/dev/null || true; fi; \
-        if [ -d "static" ]; then cp -r static/* /build/static/ 2>/dev/null || true; fi; \
-    elif [ -d "frontend" ] && [ -f "frontend/package.json" ]; then \
-        echo "==> Detected frontend/ directory. Building assets..." && \
+# Detect frontend location and compile static assets
+RUN mkdir -p /build/app/static /build/static /build/dist && \
+    if [ -d "frontend" ] && [ -f "frontend/package.json" ]; then \
+        echo "==> Building frontend assets inside frontend/ directory..." && \
         cd frontend && \
-        mkdir -p public && \
         npm install --silent && \
-        npm run build --if-present && \
-        if [ -d "dist" ]; then cp -r dist/* /build/dist/ 2>/dev/null || true; cp -r dist/* /build/static/ 2>/dev/null || true; fi; \
-        if [ -d "static" ]; then cp -r static/* /build/static/ 2>/dev/null || true; fi && \
+        npm run build && \
+        mkdir -p ../app/static ../static && \
+        cp -r dist/* ../app/static/ 2>/dev/null || true && \
+        cp -r dist/* ../static/ 2>/dev/null || true && \
+        cp -r dist/* /build/dist/ 2>/dev/null || true && \
         cd ..; \
-    else \
-        echo "==> No frontend package.json found. Creating placeholder..." && \
-        echo '<!DOCTYPE html><html><head><meta charset="utf-8"><title>API Running</title></head><body><h2>FastAPI Backend Running</h2><p><a href="/docs">Docs</a></p></body></html>' > /build/dist/index.html && \
-        cp /build/dist/index.html /build/static/index.html; \
+    fi && \
+    if [ -f "package.json" ]; then \
+        echo "==> Building frontend assets from root..." && \
+        npm install --silent && \
+        npm run build && \
+        mkdir -p app/static static && \
+        cp -r dist/* app/static/ 2>/dev/null || true && \
+        cp -r dist/* static/ 2>/dev/null || true && \
+        cp -r dist/* /build/dist/ 2>/dev/null || true; \
     fi
 
 # Stage 2: Final Production Python Image
@@ -48,6 +48,7 @@ COPY app/ ./app/
 COPY start.sh .
 COPY --from=frontend-builder /build/dist ./dist
 COPY --from=frontend-builder /build/static ./static
+COPY --from=frontend-builder /build/app/static ./app/static
 RUN chmod +x /app/start.sh && \
     chmod -R 755 /app
 EXPOSE 8000
