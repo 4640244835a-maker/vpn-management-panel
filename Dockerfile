@@ -47,4 +47,4 @@ COPY --from=frontend-builder /build/dist ./dist
 RUN chmod +x /app/start.sh && \
     chmod -R 755 /app
 EXPOSE 8000
-CMD ["/bin/sh", "/app/start.sh"]
+CMD ["sh", "-c", "export PYTHONPATH=. && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
