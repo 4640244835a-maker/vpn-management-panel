@@ -92,12 +92,12 @@ async def health_check():
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
-if not os.path.exists(STATIC_DIR):
-    STATIC_DIR = os.path.join(os.path.dirname(BASE_DIR), "static")
-if not os.path.exists(STATIC_DIR):
-    dist_dir = os.path.join(os.path.dirname(BASE_DIR), "dist")
-    if os.path.exists(dist_dir):
-        STATIC_DIR = dist_dir
+if not os.path.exists(os.path.join(STATIC_DIR, "index.html")):
+    parent_static = os.path.join(os.path.dirname(BASE_DIR), "static")
+    if os.path.exists(os.path.join(parent_static, "index.html")):
+        STATIC_DIR = parent_static
+    elif os.path.exists(os.path.join(os.path.dirname(BASE_DIR), "dist", "index.html")):
+        STATIC_DIR = os.path.join(os.path.dirname(BASE_DIR), "dist")
 
 if os.path.exists(os.path.join(STATIC_DIR, "assets")):
     app.mount("/assets", StaticFiles(directory=os.path.join(STATIC_DIR, "assets")), name="assets")
